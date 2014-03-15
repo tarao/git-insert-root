@@ -9,7 +9,7 @@ Options:
   -h            Show this help message.
   -b <branch>   Leave a branch including a single root commit.
   -m <message>  A commit message for the root commit to be inserted.
-  -e            Leave "empty" commit message.
+  -e            Leave "(empty)" commit message.
   <file>...     Optional files added to the root commit.  The root commit
                 will be an empty commit if you specifies nothing.
 EOF
@@ -42,7 +42,7 @@ while [ $parsing = 1 ] && [ -n "$1" ]; do
         message=$(parse_argument "$1" "$2"); shift $?
         ;;
     -e|--empty)
-        message='empty'; shift
+        message='(empty)'; shift
         ;;
     --)
         shift; parsing=0
