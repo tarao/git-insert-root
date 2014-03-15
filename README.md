@@ -47,7 +47,7 @@ git insert-root -e -b empty
 git checkout empty
 ```
 
-- ``empty`` is a branch with a single root commit
+- ``empty`` becomes a branch with a single root commit
 
 ## Tips
 
@@ -68,7 +68,7 @@ git checkout branch-B
 git merge branch-A  # CONFLICT!
 ```
 
-To avoid this, make merge commit just after inserting the root commit.
+To avoid this, make a merge commit just after inserting the root commit.
 
 ```sh
 git checkout branch-A
