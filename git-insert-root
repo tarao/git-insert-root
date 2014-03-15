@@ -85,7 +85,12 @@ prepare() {
 
 create_root_branch() {
     git checkout --orphan "$1"; shift
+
+    git ls-files -m | while read f; do
+        git reset -- "$f"
+    done
     git rm --cached -rq .
+
     for p in "$@"; do
         [ -e "$p" ] && git add -- "$p"
     done
