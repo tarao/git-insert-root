@@ -1,0 +1,84 @@
+#!/bin/sh
+
+help() {
+    cat <<"EOF"
+Usage: $0 [-h] [-b <branch>] [-m <message>|-e]
+  Create a new commit and insert it as a root commit of the current branch.
+
+Options:
+  -h            Show this help message.
+  -b <branch>   Leave a branch including a single root commit.
+  -m <message>  A commit message for the root commit to be inserted.
+  -e            Leave "empty" commit message.
+EOF
+    exit $1
+}
+
+parse_argument() {
+    case "$1" in
+    --*)
+        echo "${1#*=}"
+        return 1
+        ;;
+    *)
+        echo "$2"
+        return 2
+        ;;
+    esac
+}
+
+parsing=1
+while [ $parsing = 1 ] && [ -n "$1" ]; do
+    case "$1" in
+    -h|--help)
+        help
+        ;;
+    -b|--branch=*)
+        new_branch=$(parse_argument "$1" "$2"); shift $?
+        ;;
+    -m|--message=*)
+        message=$(parse_argument "$1" "$2"); shift $?
+        ;;
+    -e|--empty)
+        message='empty'; shift
+        ;;
+    --)
+        shift; parsing=0
+        ;;
+    *)
+        parsing=0
+        ;;
+    esac
+done
+
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+[ -z "$new_branch" ] && {
+    delete_branch=1
+    new_branch="$current_branch"
+    while git branch --list | grep "$new_branch" >/dev/null >&2; do
+        new_branch="x$new_branch"
+    done
+}
+
+# create new empty branch
+git checkout --orphan "$new_branch"
+git rm --cached -r .
+git clean -f -d
+
+# create a commit
+[ -n "$message" ] && {
+    git commit --allow-empty -m "$message"
+} || {
+    git commit --allow-empty
+}
+
+# make the new commit a root commit of $current_branch
+# the idea is taken from http://stackoverflow.com/a/15706715
+sha=$(git rev-parse HEAD)
+git filter-branch --parent-filter "sed 's/^\$/-p $sha/'" \
+    --tag-name-filter cat "$current_branch"
+
+# cleanup
+git checkout "$current_branch"
+[ -n "$delete_branch" ] && git branch -D "$new_branch"
