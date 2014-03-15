@@ -118,8 +118,9 @@ current_branch=$(git rev-parse --abbrev-ref HEAD)
 prepare "$@" || exit 1
 create_root_branch "$new_branch" "$@"
 create_root_commit "$message" && {
-    # make command to add files to index
     head=$(git rev-parse HEAD)
+
+    # make command to add files to index
     for p in "$@"; do
         [ -e "$p" ] && {
             filter=$(git ls-tree -r "$head" "$p" | cut -d ' ' -f 1,3 |
@@ -139,9 +140,8 @@ create_root_commit "$message" && {
     # the idea is taken from:
     # - http://stackoverflow.com/a/15706715
     # - http://stackoverflow.com/a/3898842
-    sha=$(git rev-parse HEAD)
     git filter-branch -f \
-        --parent-filter "sed 's/^\$/-p $sha/'" \
+        --parent-filter "sed 's/^\$/-p $head/'" \
         --index-filter "$index_filter" \
         --tag-name-filter cat \
         "$current_branch"
