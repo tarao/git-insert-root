@@ -2,7 +2,7 @@
 
 help() {
     cat <<"EOF"
-Usage: $0 [-h] [-b <branch>] [-m <message>|-e]
+Usage: $0 [-h] [-b <branch>] [-m <message>|-e] [<file>...]
   Create a new commit and insert it as a root commit of the current branch.
 
 Options:
@@ -10,6 +10,8 @@ Options:
   -b <branch>   Leave a branch including a single root commit.
   -m <message>  A commit message for the root commit to be inserted.
   -e            Leave "empty" commit message.
+  <file>...     Optional files added to the root commit.  The root commit
+                will be an empty commit if you specifies nothing.
 EOF
     exit $1
 }
@@ -51,6 +53,53 @@ while [ $parsing = 1 ] && [ -n "$1" ]; do
     esac
 done
 
+for p in "$@"; do
+    [ -e "$p" ] || {
+        echo "No such file or directory '$p'" >&2
+        exit 1
+    }
+done
+
+no_changes() {
+    git diff-index --quiet --cached HEAD --ignore-submodules -- &&
+    git diff-files --quiet --ignore-submodules &&
+    test -z "$(git ls-files -o)" && return 0
+    return 1
+}
+
+prepare() {
+    for p in "$@"; do
+        git add -- "$p"
+    done
+
+    no_changes || {
+        git stash save -a
+        stash_saved=1
+        for p in "$@"; do
+            git checkout stash@{0} -- "$p"
+        done
+    }
+
+    git reset
+}
+
+create_root_branch() {
+    git checkout --orphan "$1"; shift
+    git rm --cached -rq .
+    for p in "$@"; do
+        [ -e "$p" ] && git add -- "$p"
+    done
+    git clean -fd
+}
+
+create_root_commit() {
+    [ -n "$1" ] && {
+        git commit --allow-empty -m "$1" || return 1
+    } || {
+        git commit --allow-empty || return 1
+    }
+}
+
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 
 [ -z "$new_branch" ] && {
@@ -61,24 +110,39 @@ current_branch=$(git rev-parse --abbrev-ref HEAD)
     done
 }
 
-# create new empty branch
-git checkout --orphan "$new_branch"
-git rm --cached -r .
-git clean -f -d
+prepare "$@" || exit 1
+create_root_branch "$new_branch" "$@"
+create_root_commit "$message" && {
+    # make command to add files to index
+    head=$(git rev-parse HEAD)
+    for p in "$@"; do
+        [ -e "$p" ] && {
+            filter=$(git ls-tree -r "$head" "$p" | cut -d ' ' -f 1,3 |
+                while read mode_blob_path; do
+                    mode_blob=$(echo "$mode_blob_path" | cut -f 1)
+                    path=$(echo "$mode_blob_path" | cut -f 2)
+                    echo -n " --cacheinfo $mode_blob '$path'"
+                done; echo)
+            [ -z "$index_filter" ] && {
+                index_filter='git update-index --add'
+            }
+            index_filter="$index_filter $filter"
+        }
+    done
 
-# create a commit
-[ -n "$message" ] && {
-    git commit --allow-empty -m "$message"
-} || {
-    git commit --allow-empty
+    # make the new commit a root commit of $current_branch
+    # the idea is taken from:
+    # - http://stackoverflow.com/a/15706715
+    # - http://stackoverflow.com/a/3898842
+    sha=$(git rev-parse HEAD)
+    git filter-branch -f \
+        --parent-filter "sed 's/^\$/-p $sha/'" \
+        --index-filter "$index_filter" \
+        --tag-name-filter cat \
+        "$current_branch"
 }
-
-# make the new commit a root commit of $current_branch
-# the idea is taken from http://stackoverflow.com/a/15706715
-sha=$(git rev-parse HEAD)
-git filter-branch --parent-filter "sed 's/^\$/-p $sha/'" \
-    --tag-name-filter cat "$current_branch"
 
 # cleanup
 git checkout "$current_branch"
+[ -n "$stash_saved" ] && git stash pop
 [ -n "$delete_branch" ] && git branch -D "$new_branch"
